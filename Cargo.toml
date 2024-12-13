@@ -1,0 +1,8 @@
+[package]
+name = "tupiadic"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+
+tupiadic_macros = { version = "0.1.0", path = "macros"}
