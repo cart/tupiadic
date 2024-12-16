@@ -46,6 +46,12 @@ mod tests {
             }
         }
 
+        impl<P: Fn() -> usize> GetUsize for P {
+            fn get_usize(&self) -> usize {
+                (self)()
+            }
+        }
+
         struct AddMarker;
 
         impl VariadicMarker for AddMarker {
@@ -76,6 +82,6 @@ mod tests {
         assert_eq!(X(1).add(), 1);
         assert_eq!((X(1), X(2)).add(), 3);
         assert_eq!((X(1), (X(2), X(3))).add(), 6);
-        assert_eq!((X(1), X(2), Y(3)).add(), 6);
+        assert_eq!((X(1), X(2), Y(3), || 10).add(), 16);
     }
 }
