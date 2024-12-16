@@ -1,4 +1,4 @@
-use proc_macro::{Span, TokenStream};
+use proc_macro::TokenStream;
 use proc_macro2::Literal;
 use quote::{format_ident, quote};
 
@@ -13,98 +13,47 @@ pub fn tupiadic_impl(input: TokenStream) -> TokenStream {
         .expect("Expected a single integer input");
 
     let mut impls = TokenStream::new();
-    let mut total_impls = 0;
-    for i in 1..=count {
-        tupiadic_count(&mut impls, i, &mut total_impls);
+    for i in 2..=count {
+        tupiadic_count(&mut impls, i);
     }
-
-    println!("TOTAL IMPLS: {total_impls}");
     impls
 }
 
 /// Implements Variadic for a given tuple count
-fn tupiadic_count(impls: &mut TokenStream, count: usize, total_impls: &mut usize) {
+fn tupiadic_count(impls: &mut TokenStream, count: usize) {
     let generics = (1..=count).map(|i| format_ident!("T{}", i));
+    let generics1 = generics.clone();
     let generics2 = generics.clone();
     let generics3 = generics.clone();
     let generics4 = generics.clone();
+    let generics5 = generics.clone();
+    let indices = (3..=count).map(|i| Literal::usize_unsuffixed(i - 1));
+    let indices1 = indices.clone();
+    let indices2 = indices.clone();
 
-    // TupleSlice impls
-    if count >= 2 {
-        // TupleSlice indices start from the right of a tuple. When we reach the count impl, it resolves in the same way as
-        // a (T1, T2) tuple (the "leaf", which returns normal left index 0 right index 1 values). 
-        for i in 0..(count-2) {
-            *total_impls += 1;
-            let generics = generics.clone();
-            let generics2 = generics.clone();
-            let generics3 = generics.clone();
-            let generics4 = generics.clone();
-            let generics5 = generics.clone();
-            let index = Literal::usize_unsuffixed(i);
-            let index_plus_1 = Literal::usize_unsuffixed(i+1);
-            let right_index = Literal::usize_unsuffixed(count - i - 1);
-            let right_generic = format_ident!("T{}", count - i);
-            
-            impls.extend(TokenStream::from(quote! {
-                impl<#(#generics,)*> Variadic for TupleSlice<(#(#generics2,)*), #index> {
-                    type Left = TupleSlice<(#(#generics3,)*), #index_plus_1>;
-                    type Right = #right_generic;
-                
-                    fn left(&self) -> &Self::Left {
-                        unsafe {
-                            &*(self as *const TupleSlice<(#(#generics4,)*), #index> as *const TupleSlice<(#(#generics5,)*), #index_plus_1>)
-                        }
-                    }
-                
-                    fn right(&self) -> &Self::Right {
-                        &self.0 .#right_index
-                    }
-                }
-            }));
+    impls.extend(TokenStream::from(quote! {
+        impl<M: VariadicMarker, #(#generics: VariadicMut<M>,)*> VariadicMut<M> for (#(#generics1,)*) {
+            fn visit(&mut self, input: &mut M::Input) -> M::Output {
+                let o = M::fold(self.0.visit(input), self.1.visit(input));
+                #(let o = M::fold(o, self.#indices.visit(input));)*
+                o
+            }
         }
-
-        let generics = generics.clone();
-        let generics2 = generics.clone();
-        let right_index = Literal::usize_unsuffixed(count - 2);
-        *total_impls += 1;
-        impls.extend(TokenStream::from(quote! {
-            impl<#(#generics,)*> Variadic for TupleSlice<(#(#generics2,)*), #right_index> {
-                type Left = T1;
-                type Right = T2;
-            
-                fn left(&self) -> &Self::Left {
-                    &self.0 .0
-                }
-            
-                fn right(&self) -> &Self::Right {
-                    &self.0 .1
-                }
+        
+        impl<M: VariadicMarker, #(#generics2: VariadicRef<M>,)*> VariadicRef<M> for (#(#generics3,)*) {
+            fn visit(&self, input: &mut M::Input) -> M::Output {
+                let o = M::fold(self.0.visit(input), self.1.visit(input));
+                #(let o = M::fold(o, self.#indices1.visit(input));)*
+                o
             }
-        }));
-    }
-
-    // Tuple Impls
-    // Only implement Variadic for actual tuples >= 3. Lower impls are manually implemented for macro clarity + compile times.
-    if count >= 3 {
-        let last = format_ident!("T{}", count);
-        let last_index = Literal::usize_unsuffixed(count - 1);
-
-        // SAFETY: the cast from the tuple pointer to the TupleSlice pointer is safe because TupleSlice has the same
-        // memory layout (just wraps a tuple of the same type, and it has #[repr(transparent)] ).
-        *total_impls += 1;
-        impls.extend(TokenStream::from(quote! {
-            impl <#(#generics,)*> Variadic for (#(#generics2,)*) {
-                type Left = TupleSlice<(#(#generics3,)*), 1>;
-                type Right = #last;
-
-                fn left(&self) -> &Self::Left {
-                    unsafe { &*(self as *const Self as *const TupleSlice<(#(#generics4,)*), 1>) }
-                }
-
-                fn right(&self) -> &Self::Right {
-                    &self.#last_index
-                }
+        }
+        
+        impl<M: VariadicMarker, #(#generics4: VariadicOwned<M>,)*> VariadicOwned<M> for (#(#generics5,)*) {
+            fn visit(self, input: &mut M::Input) -> M::Output {
+                let o = M::fold(self.0.visit(input), self.1.visit(input));
+                #(let o = M::fold(o, self.#indices2.visit(input));)*
+                o
             }
-        }))
-    }
+        }
+    }));
 }
